@@ -29,6 +29,14 @@ async function authorizePatientAccess(req, res, next) {
 
     let targetPatientId = req.params.id;
 
+    if (!targetPatientId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Patient ID parameter is missing.',
+      });
+    }
+
     // Handle special "me" alias endpoint (GET/PUT /api/patients/me)
     if (targetPatientId === 'me') {
       if (!req.user.patient_id) {
@@ -58,21 +66,33 @@ async function authorizePatientAccess(req, res, next) {
     }
 
     // Check 2: Query DB to verify if patient record belongs to this user's firebase_uid
-    const patientRecord = await prisma.patient.findUnique({
-      where: { id: targetPatientId },
-      include: { user: true },
-    });
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let patientRecord = null;
+
+    if (UUID_REGEX.test(targetPatientId)) {
+      patientRecord = await prisma.patient.findUnique({
+        where: { id: targetPatientId },
+        include: { user: true },
+      });
+    } else {
+      // Support looking up by health_id (e.g. MWH-XXXXXX)
+      patientRecord = await prisma.patient.findUnique({
+        where: { health_id: targetPatientId },
+        include: { user: true },
+      });
+    }
 
     if (!patientRecord) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
-        message: `Patient with ID "${targetPatientId}" was not found.`,
+        message: `Patient with ID/Health ID "${targetPatientId}" was not found.`,
       });
     }
 
     if (patientRecord.user && patientRecord.user.firebase_uid === req.user.uid) {
       req.user.patient_id = patientRecord.id; // cache match
+      req.params.id = patientRecord.id; // normalize to UUID
       return next();
     }
 

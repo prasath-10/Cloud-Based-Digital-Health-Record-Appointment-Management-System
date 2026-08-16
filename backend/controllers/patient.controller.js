@@ -127,22 +127,84 @@ async function createPatient(req, res, next) {
 }
 
 /**
+ * @route   GET /api/patients/me
+ * @desc    Fetch profile of currently authenticated patient
+ * @access  Private (Self)
+ */
+async function getMyProfile(req, res, next) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { firebase_uid: req.user.uid },
+      include: {
+        patient: true,
+      },
+    });
+
+    if (!user || !user.patient) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: 'Patient profile not registered yet for this account. Please register first via POST /api/patients.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        ...user.patient,
+        user: {
+          id: user.id,
+          firebase_uid: user.firebase_uid,
+          role: user.role,
+          phone: user.phone,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error fetching own profile:', error.message);
+    next(error);
+  }
+}
+
+/**
  * @route   GET /api/patients/:id
- * @desc    Fetch single patient profile by ID (or "me")
+ * @desc    Fetch single patient profile by ID
  * @access  Private (Self-Access or Doctor/Admin)
  */
 async function getPatientById(req, res, next) {
   try {
     const patientId = req.params.id;
 
-    const patient = await prisma.patient.findUnique({
-      where: { id: patientId },
-      include: {
-        user: {
-          select: { id: true, firebase_uid: true, role: true, phone: true },
+    if (!patientId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Patient ID parameter is required.',
+      });
+    }
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let patient = null;
+
+    if (UUID_REGEX.test(patientId)) {
+      patient = await prisma.patient.findUnique({
+        where: { id: patientId },
+        include: {
+          user: {
+            select: { id: true, firebase_uid: true, role: true, phone: true },
+          },
         },
-      },
-    });
+      });
+    } else {
+      patient = await prisma.patient.findUnique({
+        where: { health_id: patientId },
+        include: {
+          user: {
+            select: { id: true, firebase_uid: true, role: true, phone: true },
+          },
+        },
+      });
+    }
 
     if (!patient) {
       return res.status(404).json({
@@ -171,6 +233,14 @@ async function updatePatient(req, res, next) {
   try {
     const patientId = req.params.id;
     const { name, dob, gender, language_pref } = req.body;
+
+    if (!patientId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Patient ID parameter is required.',
+      });
+    }
 
     const existingPatient = await prisma.patient.findUnique({
       where: { id: patientId },
@@ -230,6 +300,7 @@ async function updatePatient(req, res, next) {
 
 module.exports = {
   createPatient,
+  getMyProfile,
   getPatientById,
   updatePatient,
 };

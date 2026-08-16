@@ -27,7 +27,7 @@ router.post('/', patientController.createPatient);
  * @desc    Fetch profile of currently authenticated patient
  * @access  Private (Self)
  */
-router.get('/me', authorizePatientAccess, patientController.getPatientById);
+router.get('/me', patientController.getMyProfile);
 
 /**
  * @route   GET /api/patients/:id
