@@ -20,11 +20,34 @@ enum AppointmentStatus {
   completed
 }
 
+enum Role {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+// ------------------------------------------------------------
+// 0. User Entity (Authentication & Role Mapping)
+// ------------------------------------------------------------
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  firebase_uid String   @unique
+  phone        String   @unique
+  role         Role     @default(PATIENT)
+  created_at   DateTime @default(now())
+
+  patient Patient?
+  doctor  Doctor?
+
+  @@map("users")
+}
+
 // ------------------------------------------------------------
 // 1. Patient Entity
 // ------------------------------------------------------------
 model Patient {
   id            String   @id @default(uuid()) @db.Uuid
+  user_id       String?  @unique @db.Uuid
   health_id     String   @unique
   name          String
   phone         String   @unique
@@ -33,6 +56,7 @@ model Patient {
   language_pref String
   created_at    DateTime @default(now())
 
+  user            User?           @relation(fields: [user_id], references: [id], onDelete: Cascade)
   appointments    Appointment[]
   medical_records MedicalRecord[]
 
@@ -60,12 +84,14 @@ model Clinic {
 // ------------------------------------------------------------
 model Doctor {
   id             String   @id @default(uuid()) @db.Uuid
+  user_id        String?  @unique @db.Uuid
   clinic_id      String   @db.Uuid
   name           String
   specialization String
   phone          String   @unique
   created_at     DateTime @default(now())
 
+  user            User?           @relation(fields: [user_id], references: [id], onDelete: Cascade)
   clinic          Clinic          @relation(fields: [clinic_id], references: [id], onDelete: Cascade)
   appointments    Appointment[]
   medical_records MedicalRecord[]

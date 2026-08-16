@@ -6,8 +6,10 @@ const express = require('express');
 const router = express.Router();
 
 const healthRouter = require('./health.routes');
+const protectedRouter = require('./protected.routes');
 
-// Mount the health-check route at /health
+// Mount sub-routers
 router.use('/health', healthRouter);
+router.use('/protected', protectedRouter);
 
 module.exports = router;
