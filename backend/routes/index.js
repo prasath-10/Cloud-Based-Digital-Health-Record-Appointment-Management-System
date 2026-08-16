@@ -7,9 +7,11 @@ const router = express.Router();
 
 const healthRouter = require('./health.routes');
 const protectedRouter = require('./protected.routes');
+const patientRouter = require('./patient.routes');
 
 // Mount sub-routers
 router.use('/health', healthRouter);
 router.use('/protected', protectedRouter);
+router.use('/patients', patientRouter);
 
 module.exports = router;
