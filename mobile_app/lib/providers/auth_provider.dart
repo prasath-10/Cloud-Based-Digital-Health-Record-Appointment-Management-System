@@ -1,0 +1,236 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../data/services/auth_service.dart';
+import '../data/services/patient_service.dart';
+
+enum AuthStatus {
+  initial,
+  otpSending,
+  otpSent,
+  verifying,
+  authenticated,
+  needsRegistration,
+  error,
+}
+
+class AuthState {
+  final AuthStatus status;
+  final String? phoneNumber;
+  final String? verificationId;
+  final String? idToken;
+  final Map<String, dynamic>? patientProfile;
+  final String? errorMessage;
+
+  const AuthState({
+    this.status = AuthStatus.initial,
+    this.phoneNumber,
+    this.verificationId,
+    this.idToken,
+    this.patientProfile,
+    this.errorMessage,
+  });
+
+  bool get isLoading =>
+      status == AuthStatus.otpSending || status == AuthStatus.verifying;
+
+  bool get isAuthenticated =>
+      status == AuthStatus.authenticated && idToken != null;
+
+  AuthState copyWith({
+    AuthStatus? status,
+    String? phoneNumber,
+    String? verificationId,
+    String? idToken,
+    Map<String, dynamic>? patientProfile,
+    String? errorMessage,
+  }) {
+    return AuthState(
+      status: status ?? this.status,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      verificationId: verificationId ?? this.verificationId,
+      idToken: idToken ?? this.idToken,
+      patientProfile: patientProfile ?? this.patientProfile,
+      errorMessage: errorMessage,
+    );
+  }
+}
+
+class AuthNotifier extends StateNotifier<AuthState> {
+  final AuthService _authService;
+  final PatientService _patientService;
+
+  AuthNotifier(this._authService, this._patientService)
+      : super(const AuthState());
+
+  /// Step 3: Trigger OTP dispatch via Firebase
+  Future<void> sendOtp(String rawPhone) async {
+    // Standardize to E.164 format (+91 for India if not specified)
+    String formattedPhone = rawPhone.trim();
+    if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+91$formattedPhone';
+    }
+
+    state = state.copyWith(
+      status: AuthStatus.otpSending,
+      phoneNumber: formattedPhone,
+      errorMessage: null,
+    );
+
+    try {
+      await _authService.sendOtp(
+        phoneNumber: formattedPhone,
+        onCodeSent: (verificationId) {
+          state = state.copyWith(
+            status: AuthStatus.otpSent,
+            verificationId: verificationId,
+          );
+        },
+        onVerificationFailed: (error) {
+          state = state.copyWith(
+            status: AuthStatus.error,
+            errorMessage: error.message ?? 'Verification failed (${error.code})',
+          );
+        },
+        onAutoVerify: (credential) async {
+          // If auto-retrieved on mobile
+          await _onAuthSuccess();
+        },
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: e.toString(),
+      );
+    }
+  }
+
+  /// Step 5: Verify 6-digit OTP and check patient profile
+  Future<void> verifyOtp(String smsCode) async {
+    state = state.copyWith(
+      status: AuthStatus.verifying,
+      errorMessage: null,
+    );
+
+    try {
+      await _authService.verifyOtp(
+        smsCode: smsCode.trim(),
+        verificationId: state.verificationId,
+      );
+
+      await _onAuthSuccess();
+    } on FirebaseAuthException catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: e.message ?? 'Invalid OTP code.',
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: e.toString(),
+      );
+    }
+  }
+
+  /// Handles token retrieval and backend profile check
+  Future<void> _onAuthSuccess() async {
+    try {
+      final token = await _authService.getIdToken(forceRefresh: true);
+      if (token == null) {
+        state = state.copyWith(
+          status: AuthStatus.error,
+          errorMessage: 'Failed to retrieve Firebase ID token.',
+        );
+        return;
+      }
+
+      state = state.copyWith(idToken: token);
+
+      // Call GET /api/patients/me
+      final profile = await _patientService.getMyProfile(token);
+
+      if (profile != null) {
+        // Patient profile exists -> go to Dashboard
+        state = state.copyWith(
+          status: AuthStatus.authenticated,
+          patientProfile: profile,
+        );
+      } else {
+        // 404 Not Found -> Patient needs registration
+        state = state.copyWith(
+          status: AuthStatus.needsRegistration,
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: 'Backend connection error: ${e.toString()}',
+      );
+    }
+  }
+
+  /// Complete patient registration via POST /api/patients
+  Future<bool> registerPatient({
+    required String name,
+    required String dob,
+    required String gender,
+    required String languagePref,
+  }) async {
+    if (state.idToken == null) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: 'User not authenticated with Firebase.',
+      );
+      return false;
+    }
+
+    state = state.copyWith(
+      status: AuthStatus.verifying,
+      errorMessage: null,
+    );
+
+    try {
+      final newProfile = await _patientService.createPatient(
+        idToken: state.idToken!,
+        name: name,
+        dob: dob,
+        gender: gender,
+        languagePref: languagePref,
+        phone: state.phoneNumber,
+      );
+
+      state = state.copyWith(
+        status: AuthStatus.authenticated,
+        patientProfile: newProfile,
+      );
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: e.toString().replaceAll('Exception: ', ''),
+      );
+      return false;
+    }
+  }
+
+  /// Sign out
+  Future<void> signOut() async {
+    await _authService.signOut();
+    state = const AuthState();
+  }
+}
+
+// Global Providers
+final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+final patientServiceProvider = Provider<PatientService>((ref) => PatientService());
+
+final authNotifierProvider =
+    StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  final patientService = ref.watch(patientServiceProvider);
+  return AuthNotifier(authService, patientService);
+});
+
+// Helper provider for convenient token access in other providers
+final authTokenProvider = Provider<String?>((ref) {
+  return ref.watch(authNotifierProvider).idToken;
+});
