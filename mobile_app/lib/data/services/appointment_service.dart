@@ -124,4 +124,90 @@ class AppointmentService {
       throw Exception(msg);
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // GET /api/appointments/me
+  // ---------------------------------------------------------------------------
+
+  /// Returns all appointments for the authenticated patient.
+  Future<List<Map<String, dynamic>>> getMyAppointments({
+    required String idToken,
+    String? status,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/appointments/me',
+        queryParameters: status != null ? {'status': status} : null,
+        options: Options(headers: {'Authorization': 'Bearer $idToken'}),
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final List<dynamic> data = response.data['data'] ?? [];
+        return data.map((e) => e as Map<String, dynamic>).toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to load appointments.';
+      throw Exception(msg);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PUT /api/appointments/:id (Reschedule)
+  // ---------------------------------------------------------------------------
+
+  /// Reschedules an appointment with a new [slotTime] (ISO-8601 string).
+  ///
+  /// Throws [SlotTakenException] on HTTP 409 Conflict if the doctor is booked for that slot.
+  Future<Map<String, dynamic>> rescheduleAppointment({
+    required String idToken,
+    required String appointmentId,
+    required String slotTime,
+  }) async {
+    try {
+      final response = await _dio.put(
+        '/appointments/$appointmentId',
+        data: {
+          'slot_time': slotTime,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $idToken'}),
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return response.data['data'] as Map<String, dynamic>;
+      }
+      throw Exception(response.data['message'] ?? 'Reschedule failed.');
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 409) {
+        throw const SlotTakenException();
+      }
+      final msg = e.response?.data?['message'] ?? e.message ?? 'Reschedule request failed.';
+      throw Exception(msg);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PATCH /api/appointments/:id/cancel
+  // ---------------------------------------------------------------------------
+
+  /// Cancels an appointment (soft-cancel, status becomes 'cancelled').
+  Future<Map<String, dynamic>> cancelAppointment({
+    required String idToken,
+    required String appointmentId,
+  }) async {
+    try {
+      final response = await _dio.patch(
+        '/appointments/$appointmentId/cancel',
+        options: Options(headers: {'Authorization': 'Bearer $idToken'}),
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return response.data['data'] as Map<String, dynamic>;
+      }
+      throw Exception(response.data['message'] ?? 'Cancellation failed.');
+    } on DioException catch (e) {
+      final msg = e.response?.data?['message'] ?? e.message ?? 'Cancel request failed.';
+      throw Exception(msg);
+    }
+  }
 }

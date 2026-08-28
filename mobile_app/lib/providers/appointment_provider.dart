@@ -46,6 +46,16 @@ final doctorsForClinicProvider =
   return service.getDoctors(idToken: token, clinicId: clinicId);
 });
 
+/// Fetches all appointments for the logged-in patient from GET /api/appointments/me.
+final myAppointmentsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final token = ref.watch(authTokenProvider);
+  if (token == null) throw Exception('Not authenticated.');
+
+  final service = ref.watch(appointmentServiceProvider);
+  return service.getMyAppointments(idToken: token);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BookingState — the single source of truth for the wizard
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,6 +204,7 @@ class BookingNotifier extends StateNotifier<BookingState> {
         status: BookingStatus.success,
         confirmedBooking: result,
       );
+      _ref.invalidate(myAppointmentsProvider);
     } on SlotTakenException {
       // 409 Conflict — specific, actionable message
       state = state.copyWith(
