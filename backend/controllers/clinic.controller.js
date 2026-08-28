@@ -25,7 +25,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  */
 async function createClinic(req, res, next) {
   try {
-    const { name, location, contact_number } = req.body;
+    const { name, location, contact_number, latitude, longitude } = req.body;
 
     // ── Input Validation ─────────────────────────────────────
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
@@ -52,12 +52,17 @@ async function createClinic(req, res, next) {
       });
     }
 
+    const parsedLat = latitude !== undefined && latitude !== null ? parseFloat(latitude) : null;
+    const parsedLng = longitude !== undefined && longitude !== null ? parseFloat(longitude) : null;
+
     // ── Database Insert ───────────────────────────────────────
     const clinic = await prisma.clinic.create({
       data: {
         name:           name.trim(),
         location:       location.trim(),
         contact_number: contact_number.trim(),
+        latitude:       parsedLat && !isNaN(parsedLat) ? parsedLat : null,
+        longitude:      parsedLng && !isNaN(parsedLng) ? parsedLng : null,
       },
     });
 
@@ -146,7 +151,7 @@ async function getClinicById(req, res, next) {
 async function updateClinic(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, location, contact_number } = req.body;
+    const { name, location, contact_number, latitude, longitude } = req.body;
 
     if (!UUID_REGEX.test(id)) {
       return res.status(400).json({
@@ -177,12 +182,20 @@ async function updateClinic(req, res, next) {
     if (contact_number && typeof contact_number === 'string' && contact_number.trim().length >= 5) {
       updateData.contact_number = contact_number.trim();
     }
+    if (latitude !== undefined && latitude !== null) {
+      const parsedLat = parseFloat(latitude);
+      if (!isNaN(parsedLat)) updateData.latitude = parsedLat;
+    }
+    if (longitude !== undefined && longitude !== null) {
+      const parsedLng = parseFloat(longitude);
+      if (!isNaN(parsedLng)) updateData.longitude = parsedLng;
+    }
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
         success: false,
         error: 'Bad Request',
-        message: 'No valid update fields provided. Allowed fields: name, location, contact_number.',
+        message: 'No valid update fields provided. Allowed fields: name, location, contact_number, latitude, longitude.',
       });
     }
 

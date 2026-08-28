@@ -71,6 +71,8 @@ model Clinic {
   name           String
   location       String
   contact_number String
+  latitude       Float?
+  longitude      Float?
   created_at     DateTime @default(now())
 
   doctors      Doctor[]

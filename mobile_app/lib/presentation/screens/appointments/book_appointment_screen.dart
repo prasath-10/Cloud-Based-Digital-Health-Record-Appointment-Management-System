@@ -317,6 +317,7 @@ class _ClinicSelectionStep extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // clinicsProvider is a FutureProvider — .when() handles all three states
     final clinicsAsync = ref.watch(clinicsProvider);
+    final locationAsync = ref.watch(userLocationProvider);
 
     return clinicsAsync.when(
       loading: () => const _LoadingBody(message: 'Finding nearby clinics…'),
@@ -331,9 +332,23 @@ class _ClinicSelectionStep extends ConsumerWidget {
             message: 'No clinics available at the moment.',
           );
         }
+
+        final hasLocation = locationAsync.value != null;
+
         return _SelectionList(
           header: 'Choose a Clinic',
-          subtitle: '${clinics.length} clinics available',
+          subtitle: hasLocation
+              ? '${clinics.length} clinics available • Sorted by proximity'
+              : '${clinics.length} clinics available',
+          locationNotice: hasLocation
+              ? null
+              : 'Location access is off. Showing standard directory list.',
+          onRetryLocation: hasLocation
+              ? null
+              : () {
+                  ref.invalidate(userLocationProvider);
+                  ref.invalidate(clinicsProvider);
+                },
           items: clinics,
           titleKey: 'name',
           subtitleKey: 'location',
@@ -793,6 +808,8 @@ class _WarningBanner extends StatelessWidget {
 class _SelectionList extends StatelessWidget {
   final String header;
   final String subtitle;
+  final String? locationNotice;
+  final VoidCallback? onRetryLocation;
   final List<Map<String, dynamic>> items;
   final String titleKey;
   final String subtitleKey;
@@ -802,6 +819,8 @@ class _SelectionList extends StatelessWidget {
   const _SelectionList({
     required this.header,
     required this.subtitle,
+    this.locationNotice,
+    this.onRetryLocation,
     required this.items,
     required this.titleKey,
     required this.subtitleKey,
@@ -828,6 +847,50 @@ class _SelectionList extends StatelessWidget {
               Text(subtitle,
                   style: TextStyle(
                       fontSize: 13, color: Colors.grey.shade600)),
+              if (locationNotice != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.location_off_outlined,
+                          size: 14, color: Colors.amber.shade800),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          locationNotice!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ),
+                      if (onRetryLocation != null) ...[
+                        InkWell(
+                          onTap: onRetryLocation,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              'Retry',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -840,6 +903,9 @@ class _SelectionList extends StatelessWidget {
               final item = items[i];
               final title = item[titleKey]?.toString() ?? '—';
               final sub = item[subtitleKey]?.toString() ?? '';
+              final rawDist = item['distance_km'];
+              final distanceKm = (rawDist is num) ? rawDist.toDouble() : null;
+
               return InkWell(
                 onTap: () => onSelect(item),
                 borderRadius: BorderRadius.circular(12),
@@ -884,6 +950,37 @@ class _SelectionList extends StatelessWidget {
                                   style: TextStyle(
                                       fontSize: 12,
                                       color: Colors.grey.shade600)),
+                            ],
+                            if (distanceKm != null) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: _brand.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.near_me_outlined,
+                                            size: 12, color: _brand),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${distanceKm.toStringAsFixed(1)} km away',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: _brand,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ],
                         ),

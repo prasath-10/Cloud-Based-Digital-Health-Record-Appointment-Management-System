@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import '../data/services/appointment_service.dart';
 import 'auth_provider.dart';
 
@@ -11,19 +12,89 @@ final appointmentServiceProvider = Provider<AppointmentService>((ref) {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FutureProviders for the two list-fetch calls
+// Geolocation & FutureProviders
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Fetches the user's current GPS position if permission is granted.
+/// Returns null if location service is disabled, permissions are denied, or on error/timeout.
+final userLocationProvider = FutureProvider.autoDispose<Position?>((ref) async {
+  try {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return null;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return null;
+    }
+
+    return await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.medium,
+        timeLimit: Duration(seconds: 5),
+      ),
+    );
+  } catch (e) {
+    // If location lookup fails for any reason (timeout, emulator without GPS, etc.), gracefully return null
+    return null;
+  }
+});
+
 /// Fetches all clinics from GET /api/clinics.
-/// autoDispose means the result is dropped when the screen is left, so a fresh
-/// fetch happens the next time the user opens the booking flow.
+/// If user GPS location is available, calculates the distance to each clinic
+/// and sorts the list nearest-first. If location is unavailable or permission is denied,
+/// returns the standard unsorted list with distance_km = null.
 final clinicsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final token = ref.watch(authTokenProvider);
   if (token == null) throw Exception('Not authenticated.');
 
   final service = ref.watch(appointmentServiceProvider);
-  return service.getClinics(idToken: token);
+  final rawClinics = await service.getClinics(idToken: token);
+
+  final userPosition = await ref.watch(userLocationProvider.future);
+
+  final enrichedClinics = rawClinics.map((clinic) {
+    final copy = Map<String, dynamic>.from(clinic);
+    final lat = (copy['latitude'] as num?)?.toDouble();
+    final lng = (copy['longitude'] as num?)?.toDouble();
+
+    if (userPosition != null && lat != null && lng != null) {
+      final distanceInMeters = Geolocator.distanceBetween(
+        userPosition.latitude,
+        userPosition.longitude,
+        lat,
+        lng,
+      );
+      copy['distance_km'] = distanceInMeters / 1000.0;
+    } else {
+      copy['distance_km'] = null;
+    }
+    return copy;
+  }).toList();
+
+  if (userPosition != null) {
+    enrichedClinics.sort((a, b) {
+      final distA = a['distance_km'] as double?;
+      final distB = b['distance_km'] as double?;
+      if (distA != null && distB != null) {
+        return distA.compareTo(distB);
+      }
+      if (distA != null) return -1;
+      if (distB != null) return 1;
+      return 0;
+    });
+  }
+
+  return enrichedClinics;
 });
 
 /// Fetches doctors for the currently-selected clinic.
