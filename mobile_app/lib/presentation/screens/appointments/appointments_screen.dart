@@ -103,7 +103,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
             for (final appt in appointments) {
               final status = (appt['status'] ?? 'pending').toString().toLowerCase();
               final rawSlot = appt['slot_time']?.toString();
-              final slotTime = rawSlot != null ? DateTime.tryParse(rawSlot) : null;
+              final slotTime = rawSlot != null ? DateTime.tryParse(rawSlot)?.toLocal() : null;
 
               if (status == 'cancelled' || status == 'completed') {
                 past.add(appt);
@@ -156,7 +156,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     if (appointmentId == null) return;
 
     final rawSlot = appointment['slot_time']?.toString();
-    final currentSlot = rawSlot != null ? DateTime.tryParse(rawSlot) : null;
+    final currentSlot = rawSlot != null ? DateTime.tryParse(rawSlot)?.toLocal() : null;
     final doctor = appointment['doctor'] as Map<String, dynamic>?;
     final doctorName = doctor?['name']?.toString() ?? 'Doctor';
 
@@ -332,7 +332,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     final doctor = appointment['doctor'] as Map<String, dynamic>?;
     final doctorName = doctor?['name']?.toString() ?? 'Doctor';
     final rawSlot = appointment['slot_time']?.toString();
-    final slotDate = rawSlot != null ? DateTime.tryParse(rawSlot) : null;
+    final slotDate = rawSlot != null ? DateTime.tryParse(rawSlot)?.toLocal() : null;
     final formattedDate = slotDate != null
         ? DateFormat('EEE, d MMM yyyy • h:mm a').format(slotDate)
         : 'the scheduled time';
@@ -540,7 +540,7 @@ class _AppointmentCard extends StatelessWidget {
     final clinicLocation = clinic?['location']?.toString() ?? '';
 
     final rawSlot = appointment['slot_time']?.toString();
-    final slotDate = rawSlot != null ? DateTime.tryParse(rawSlot) : null;
+    final slotDate = rawSlot != null ? DateTime.tryParse(rawSlot)?.toLocal() : null;
     final formattedDate = slotDate != null
         ? DateFormat('EEE, d MMMM yyyy').format(slotDate)
         : 'Date N/A';

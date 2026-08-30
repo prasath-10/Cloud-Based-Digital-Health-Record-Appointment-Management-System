@@ -137,10 +137,60 @@ async function getMyProfile(req, res, next) {
       where: { firebase_uid: req.user.uid },
       include: {
         patient: true,
+        doctor: {
+          include: {
+            clinic: true,
+          },
+        },
       },
     });
 
-    if (!user || !user.patient) {
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: 'User account not registered yet. Please register first.',
+      });
+    }
+
+    // Role DOCTOR
+    if (user.role === 'DOCTOR') {
+      return res.json({
+        success: true,
+        data: {
+          ...(user.doctor || {
+            name: user.phone ? `Doctor (${user.phone})` : 'Medical Doctor',
+            specialization: 'General Practitioner',
+          }),
+          user: {
+            id: user.id,
+            firebase_uid: user.firebase_uid,
+            role: user.role,
+            phone: user.phone,
+          },
+        },
+      });
+    }
+
+    // Role ADMIN
+    if (user.role === 'ADMIN') {
+      return res.json({
+        success: true,
+        data: {
+          name: 'System Administrator',
+          role: 'ADMIN',
+          user: {
+            id: user.id,
+            firebase_uid: user.firebase_uid,
+            role: user.role,
+            phone: user.phone,
+          },
+        },
+      });
+    }
+
+    // Default: PATIENT
+    if (!user.patient) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
