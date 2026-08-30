@@ -75,7 +75,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/doctor/add-record',
       name: 'doctor-add-record',
-      builder: (context, state) => const DoctorAddRecordScreen(),
+      builder: (context, state) {
+        final appointmentData = state.extra as Map<String, dynamic>?;
+        return DoctorAddRecordScreen(initialAppointmentData: appointmentData);
+      },
     ),
     // Admin Routes
     GoRoute(

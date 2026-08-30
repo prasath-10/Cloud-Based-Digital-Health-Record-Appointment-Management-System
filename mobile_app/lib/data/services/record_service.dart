@@ -67,4 +67,48 @@ class RecordService {
       throw Exception(errorMsg);
     }
   }
+
+  /// Create a new medical record with nested prescriptions via POST /api/records
+  Future<Map<String, dynamic>> createMedicalRecord({
+    required String idToken,
+    required String patientId,
+    String? doctorId,
+    String? appointmentId,
+    String? visitDate,
+    required String diagnosis,
+    String? notes,
+    List<Map<String, String>>? prescriptions,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'patient_id': patientId,
+        'diagnosis': diagnosis,
+        if (doctorId != null && doctorId.isNotEmpty) 'doctor_id': doctorId,
+        if (appointmentId != null && appointmentId.isNotEmpty) 'appointment_id': appointmentId,
+        if (visitDate != null && visitDate.isNotEmpty) 'visit_date': visitDate,
+        if (notes != null) 'notes': notes,
+        if (prescriptions != null && prescriptions.isNotEmpty) 'prescriptions': prescriptions,
+      };
+
+      final response = await _dio.post(
+        '/records',
+        data: payload,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $idToken',
+          },
+        ),
+      );
+
+      if ((response.statusCode == 200 || response.statusCode == 201) &&
+          response.data['success'] == true) {
+        return response.data['data'] as Map<String, dynamic>;
+      }
+      throw Exception(response.data['message'] ?? 'Failed to create medical record.');
+    } on DioException catch (e) {
+      final errorMsg = e.response?.data?['message'] ?? e.message ?? 'Failed to create medical record.';
+      throw Exception(errorMsg);
+    }
+  }
 }
+

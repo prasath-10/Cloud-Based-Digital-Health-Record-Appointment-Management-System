@@ -126,6 +126,42 @@ class AppointmentService {
   }
 
   // ---------------------------------------------------------------------------
+  // GET /api/appointments (Doctor & Admin view)
+  // ---------------------------------------------------------------------------
+
+  /// Returns appointments filtered by [doctorId], [date] (YYYY-MM-DD), and/or [status].
+  Future<List<Map<String, dynamic>>> getDoctorAppointments({
+    required String idToken,
+    String? doctorId,
+    String? clinicId,
+    String? date,
+    String? status,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (doctorId != null && doctorId.isNotEmpty) queryParams['doctor_id'] = doctorId;
+      if (clinicId != null && clinicId.isNotEmpty) queryParams['clinic_id'] = clinicId;
+      if (date != null && date.isNotEmpty) queryParams['date'] = date;
+      if (status != null && status.isNotEmpty) queryParams['status'] = status;
+
+      final response = await _dio.get(
+        '/appointments',
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+        options: Options(headers: {'Authorization': 'Bearer $idToken'}),
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final List<dynamic> data = response.data['data'] ?? [];
+        return data.map((e) => e as Map<String, dynamic>).toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to load appointments.';
+      throw Exception(msg);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // GET /api/appointments/me
   // ---------------------------------------------------------------------------
 
