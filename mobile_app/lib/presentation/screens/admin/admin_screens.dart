@@ -693,31 +693,704 @@ class _AddDoctorModalSheetState extends ConsumerState<_AddDoctorModalSheet> {
 }
 
 // ============================================================================
-// 4. ADMIN "MANAGE CLINICS" SCREEN (Placeholders for Step 4)
+// 4. ADMIN "MANAGE CLINICS" SCREEN (Day 20 - Task 4)
 // ============================================================================
 
-class AdminManageClinicsScreen extends StatelessWidget {
+class AdminManageClinicsScreen extends ConsumerStatefulWidget {
   const AdminManageClinicsScreen({super.key});
 
   @override
+  ConsumerState<AdminManageClinicsScreen> createState() => _AdminManageClinicsScreenState();
+}
+
+class _AdminManageClinicsScreenState extends ConsumerState<AdminManageClinicsScreen> {
+  String _searchQuery = '';
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Manage Clinics')),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.apartment, size: 64, color: Color(0xFF8338EC)),
-            SizedBox(height: 16),
-            Text(
-              'Clinic Locations & Facilities',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    final authState = ref.watch(authNotifierProvider);
+    final userMap = authState.patientProfile?['user'] as Map<String, dynamic>?;
+    final role = (userMap?['role'] ?? authState.patientProfile?['role'] ?? 'PATIENT')
+        .toString()
+        .toUpperCase();
+
+    // Guard: ADMIN only
+    if (role != 'ADMIN') {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Manage Clinics')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.lock_outline, size: 64, color: Colors.redAccent),
+                const SizedBox(height: 16),
+                const Text(
+                  'Access Restricted',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This console is only accessible to System Administrators (ADMIN role). Your current role is $role.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () => context.go('/'),
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Back to Dashboard'),
+                ),
+              ],
             ),
-            SizedBox(height: 8),
-            Text('View clinic branches, capacity, and operational hours.'),
+          ),
+        ),
+      );
+    }
+
+    final clinicsAsync = ref.watch(adminClinicsProvider);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        title: const Text('Clinic Facilities'),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh Clinics',
+            onPressed: () => ref.invalidate(adminClinicsProvider),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // ── Search Bar ────────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+            ),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Search clinic name or location...',
+                prefixIcon: const Icon(Icons.search, size: 20, color: Color(0xFF8338EC)),
+                isDense: true,
+                filled: true,
+                fillColor: const Color(0xFF8338EC).withValues(alpha: 0.05),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade200),
+                ),
+              ),
+              onChanged: (val) {
+                setState(() {
+                  _searchQuery = val.trim().toLowerCase();
+                });
+              },
+            ),
+          ),
+
+          // ── Clinics List ──────────────────────────────────────────
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(adminClinicsProvider);
+              },
+              child: clinicsAsync.when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF8338EC)),
+                ),
+                error: (err, stack) => Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Failed to load clinics',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          err.toString().replaceAll('Exception: ', ''),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () => ref.invalidate(adminClinicsProvider),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Try Again'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                data: (clinics) {
+                  final filtered = clinics.where((c) {
+                    final name = (c['name'] ?? '').toString().toLowerCase();
+                    final loc = (c['location'] ?? '').toString().toLowerCase();
+                    return name.contains(_searchQuery) || loc.contains(_searchQuery);
+                  }).toList();
+
+                  if (filtered.isEmpty) {
+                    return Center(
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF8338EC).withValues(alpha: 0.08),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.apartment,
+                                  size: 56,
+                                  color: Color(0xFF8338EC),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchQuery.isNotEmpty
+                                    ? 'No clinics matching "$_searchQuery"'
+                                    : 'No Clinics Available',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2B2D42),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _searchQuery.isNotEmpty
+                                    ? 'Try searching with a different name or location.'
+                                    : 'Clinic facilities will appear here.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 14),
+                    itemBuilder: (context, index) {
+                      final clinic = filtered[index];
+                      return _ClinicFacilityCard(
+                        clinic: clinic,
+                        onEdit: () => _openEditClinicModal(context, clinic),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openEditClinicModal(BuildContext context, Map<String, dynamic> clinic) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _EditClinicModalSheet(clinic: clinic),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Clinic Facility Card Widget
+// ────────────────────────────────────────────────────────────────────────────
+
+class _ClinicFacilityCard extends StatelessWidget {
+  final Map<String, dynamic> clinic;
+  final VoidCallback onEdit;
+
+  const _ClinicFacilityCard({
+    required this.clinic,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final name = clinic['name']?.toString() ?? 'Clinic';
+    final location = clinic['location']?.toString() ?? 'Location N/A';
+    final contactNumber = clinic['contact_number']?.toString() ?? 'No phone';
+    final lat = clinic['latitude'];
+    final lng = clinic['longitude'];
+
+    final hasCoordinates = lat != null && lng != null;
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top: Name + GPS Badge
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: const Color(0xFF8338EC).withValues(alpha: 0.1),
+                  child: const Icon(Icons.apartment, color: Color(0xFF8338EC), size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2B2D42),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: hasCoordinates ? Colors.green.shade50 : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: hasCoordinates ? Colors.green.shade200 : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.location_on,
+                              size: 12,
+                              color: hasCoordinates ? Colors.green.shade700 : Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              hasCoordinates ? '$lat, $lng' : 'GPS coordinates not set',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: hasCoordinates ? Colors.green.shade800 : Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+
+            // Location
+            Row(
+              children: [
+                Icon(Icons.place_outlined, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    location,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            // Contact Number
+            Row(
+              children: [
+                Icon(Icons.phone_outlined, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 6),
+                Text(
+                  contactNumber,
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // Edit Button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF8338EC)),
+                label: const Text(
+                  'Edit Clinic Details',
+                  style: TextStyle(color: Color(0xFF8338EC), fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF8338EC)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Edit Clinic Modal Sheet
+// ────────────────────────────────────────────────────────────────────────────
+
+class _EditClinicModalSheet extends ConsumerStatefulWidget {
+  final Map<String, dynamic> clinic;
+
+  const _EditClinicModalSheet({required this.clinic});
+
+  @override
+  ConsumerState<_EditClinicModalSheet> createState() => _EditClinicModalSheetState();
+}
+
+class _EditClinicModalSheetState extends ConsumerState<_EditClinicModalSheet> {
+  final _formKey = GlobalKey<FormState>();
+
+  late final TextEditingController _nameController;
+  late final TextEditingController _locationController;
+  late final TextEditingController _contactController;
+  late final TextEditingController _latController;
+  late final TextEditingController _lngController;
+
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.clinic['name']?.toString() ?? '');
+    _locationController =
+        TextEditingController(text: widget.clinic['location']?.toString() ?? '');
+    _contactController =
+        TextEditingController(text: widget.clinic['contact_number']?.toString() ?? '');
+    _latController =
+        TextEditingController(text: widget.clinic['latitude']?.toString() ?? '');
+    _lngController =
+        TextEditingController(text: widget.clinic['longitude']?.toString() ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _locationController.dispose();
+    _contactController.dispose();
+    _latController.dispose();
+    _lngController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitClinicUpdate() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final token = ref.read(authTokenProvider);
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User not authenticated.')),
+      );
+      return;
+    }
+
+    final clinicId = widget.clinic['id']?.toString() ?? '';
+    if (clinicId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Clinic ID is missing.')),
+      );
+      return;
+    }
+
+    // Parse lat/lng
+    double? latitude;
+    double? longitude;
+    if (_latController.text.trim().isNotEmpty) {
+      latitude = double.tryParse(_latController.text.trim());
+    }
+    if (_lngController.text.trim().isNotEmpty) {
+      longitude = double.tryParse(_lngController.text.trim());
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final adminService = ref.read(adminServiceProvider);
+      await adminService.updateClinic(
+        idToken: token,
+        clinicId: clinicId,
+        name: _nameController.text.trim(),
+        location: _locationController.text.trim(),
+        contactNumber: _contactController.text.trim(),
+        latitude: latitude,
+        longitude: longitude,
+      );
+
+      // Invalidate providers so patient appointment booking and admin lists refresh
+      ref.invalidate(adminClinicsProvider);
+      ref.invalidate(clinicsProvider);
+      ref.invalidate(adminDoctorsProvider);
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close bottom sheet
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Clinic "${_nameController.text.trim()}" updated successfully!'),
+          backgroundColor: const Color(0xFF2E7D32),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(
+        top: 20,
+        left: 20,
+        right: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle & Header
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Row(
+                children: [
+                  Icon(Icons.edit_location_alt, color: Color(0xFF8338EC)),
+                  SizedBox(width: 10),
+                  Text(
+                    'Edit Clinic Details',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2B2D42),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Update clinic name, address, contact, and GPS coordinates for distance sorting.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 20),
+
+              // ── 1. Clinic Name ────────────────────────────────────
+              TextFormField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  labelText: 'Clinic Name *',
+                  prefixIcon: const Icon(Icons.apartment),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().length < 2) {
+                    return 'Clinic name must be at least 2 characters';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // ── 2. Clinic Location / Address ──────────────────────
+              TextFormField(
+                controller: _locationController,
+                decoration: InputDecoration(
+                  labelText: 'Location / Physical Address *',
+                  hintText: 'e.g. Block 4, Puchong Industrial Area',
+                  prefixIcon: const Icon(Icons.place_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().length < 2) {
+                    return 'Location is required';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // ── 3. Contact Number ─────────────────────────────────
+              TextFormField(
+                controller: _contactController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: 'Contact Phone Number *',
+                  hintText: 'e.g. +60123456789',
+                  prefixIcon: const Icon(Icons.phone_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().length < 5) {
+                    return 'Please enter a valid contact number';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // ── 4. GPS Coordinates ────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _latController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                      decoration: InputDecoration(
+                        labelText: 'Latitude',
+                        hintText: 'e.g. 3.0333',
+                        prefixIcon: const Icon(Icons.my_location, size: 18),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                      validator: (val) {
+                        if (val != null && val.trim().isNotEmpty) {
+                          if (double.tryParse(val.trim()) == null) {
+                            return 'Invalid number';
+                          }
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _lngController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                      decoration: InputDecoration(
+                        labelText: 'Longitude',
+                        hintText: 'e.g. 101.6167',
+                        prefixIcon: const Icon(Icons.my_location, size: 18),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                      validator: (val) {
+                        if (val != null && val.trim().isNotEmpty) {
+                          if (double.tryParse(val.trim()) == null) {
+                            return 'Invalid number';
+                          }
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // ── 5. Submit Button ─────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _isSaving ? null : _submitClinicUpdate,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(_isSaving ? 'Updating...' : 'Save Clinic Details'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF8338EC),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
