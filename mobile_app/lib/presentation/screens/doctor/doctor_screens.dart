@@ -723,6 +723,11 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
     }
 
     final appointmentId = widget.initialAppointmentData?['id']?.toString();
+    final authState = ref.read(authNotifierProvider);
+    final doctorId = widget.initialAppointmentData?['doctor_id']?.toString() ??
+        widget.initialAppointmentData?['doctor']?['id']?.toString() ??
+        authState.patientProfile?['id']?.toString() ??
+        authState.patientProfile?['doctor']?['id']?.toString();
 
     setState(() {
       _isSubmitting = true;
@@ -733,6 +738,7 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
       await recordService.createMedicalRecord(
         idToken: token,
         patientId: patientId,
+        doctorId: doctorId,
         appointmentId: appointmentId,
         diagnosis: _diagnosisController.text.trim(),
         notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,

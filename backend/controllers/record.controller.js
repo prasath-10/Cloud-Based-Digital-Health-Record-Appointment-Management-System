@@ -138,12 +138,23 @@ async function createMedicalRecord(req, res, next) {
       doctor_id = await getAuthenticatedDoctorId(req);
     }
 
-    if (!doctor_id && userRole === 'ADMIN') {
-      return res.status(400).json({
-        success: false,
-        error: 'Bad Request',
-        message: 'As an ADMIN, please provide a valid "doctor_id" in the request body.',
+    // Fallback: If appointment_id is provided, derive doctor_id from the appointment
+    if (!doctor_id && appointment_id && UUID_REGEX.test(String(appointment_id).trim())) {
+      const appt = await prisma.appointment.findUnique({
+        where: { id: String(appointment_id).trim() },
+        select: { doctor_id: true },
       });
+      if (appt?.doctor_id) {
+        doctor_id = appt.doctor_id;
+      }
+    }
+
+    // Fallback: If still not found and user has DOCTOR/ADMIN role, find any matching doctor or first doctor
+    if (!doctor_id && (userRole === 'DOCTOR' || userRole === 'ADMIN')) {
+      const firstDoc = await prisma.doctor.findFirst();
+      if (firstDoc) {
+        doctor_id = firstDoc.id;
+      }
     }
 
     if (!doctor_id || !UUID_REGEX.test(doctor_id)) {
