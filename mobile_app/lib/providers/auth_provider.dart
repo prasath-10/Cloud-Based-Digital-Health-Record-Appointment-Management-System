@@ -212,6 +212,36 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Update editable patient profile fields via PUT /api/patients/:id.
+  /// Patches the in-memory patientProfile so the dashboard updates immediately.
+  Future<void> updateProfile({
+    String? name,
+    String? dob,
+    String? gender,
+    String? languagePref,
+  }) async {
+    if (state.idToken == null) throw Exception('Not authenticated');
+
+    final currentProfile = state.patientProfile;
+    if (currentProfile == null) throw Exception('Profile not loaded');
+
+    final patientId = currentProfile['id']?.toString() ?? '';
+    if (patientId.isEmpty) throw Exception('Patient ID missing');
+
+    final updated = await _patientService.updatePatient(
+      idToken: state.idToken!,
+      patientId: patientId,
+      name: name,
+      dob: dob,
+      gender: gender,
+      languagePref: languagePref,
+    );
+
+    // Merge updated fields into the existing profile map so other fields are preserved
+    final merged = Map<String, dynamic>.from(currentProfile)..addAll(updated);
+    state = state.copyWith(patientProfile: merged);
+  }
+
   /// Sign out
   Future<void> signOut() async {
     await _authService.signOut();

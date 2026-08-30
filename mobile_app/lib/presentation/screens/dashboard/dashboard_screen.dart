@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../providers/auth_provider.dart';
 import 'widgets/dashboard_header_card.dart';
 
@@ -17,6 +18,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
+    final l10n = AppLocalizations.of(context) ??
+        lookupAppLocalizations(const Locale('en'));
 
     // Extract role from backend payload (default to PATIENT)
     final userMap = authState.patientProfile?['user'] as Map<String, dynamic>?;
@@ -44,7 +47,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_getRoleAppBarTitle(role)),
+        title: Text(_getRoleAppBarTitle(role, l10n)),
         elevation: 0,
         actions: [
           IconButton(
@@ -61,18 +64,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.account_circle_outlined),
-            tooltip: 'Profile',
+            tooltip: l10n.profile,
             onPressed: () => context.push('/profile'),
           ),
         ],
       ),
-      drawer: _buildDrawer(context, ref, headerTitle, role, headerBadge),
+      drawer: _buildDrawer(context, ref, headerTitle, role, headerBadge, l10n),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Task 4 & 1: Reusable & Adaptable Header Card
+            // Reusable & Adaptable Header Card
             DashboardHeaderCard(
               title: headerTitle,
               badgeText: headerBadge,
@@ -85,9 +88,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Quick Actions',
-                  style: TextStyle(
+                Text(
+                  l10n.quickActions,
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -104,8 +107,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Tasks 1 & 2: Role-aware Quick Actions wired to real go_router routes
-            ..._buildRoleQuickActions(context, role),
+            // Role-aware Quick Actions wired to real go_router routes
+            ..._buildRoleQuickActions(context, role, l10n),
 
             const SizedBox(height: 20),
 
@@ -114,48 +117,62 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ],
         ),
       ),
-      // Task 3: Bottom Navigation Bar for quick tab switching
+      // Bottom Navigation Bar for quick tab switching
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentNavIndex,
         selectedItemColor: const Color(0xFF006A6A),
         unselectedItemColor: Colors.grey.shade600,
-        onTap: (index) {
-          setState(() {
-            _currentNavIndex = index;
-          });
+        onTap: (index) async {
           if (index == 1) {
-            context.push('/profile');
+            setState(() {
+              _currentNavIndex = 1;
+            });
+            await context.push('/profile');
+            // When returning from profile screen, reset active tab to dashboard
+            if (mounted) {
+              setState(() {
+                _currentNavIndex = 0;
+              });
+            }
+          } else {
+            setState(() {
+              _currentNavIndex = 0;
+            });
           }
         },
-        items: const [
+        items: [
           BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
+            icon: const Icon(Icons.dashboard_outlined),
+            activeIcon: const Icon(Icons.dashboard),
+            label: l10n.dashboard,
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
+            icon: const Icon(Icons.person_outline),
+            activeIcon: const Icon(Icons.person),
+            label: l10n.profile,
           ),
         ],
       ),
     );
   }
 
-  String _getRoleAppBarTitle(String role) {
+  String _getRoleAppBarTitle(String role, AppLocalizations l10n) {
     switch (role) {
       case 'DOCTOR':
-        return 'Doctor Portal';
+        return l10n.doctorPortal;
       case 'ADMIN':
-        return 'Admin Console';
+        return l10n.adminConsole;
       case 'PATIENT':
       default:
-        return 'Clinic Health Hub';
+        return l10n.clinicHealthHub;
     }
   }
 
-  List<Widget> _buildRoleQuickActions(BuildContext context, String role) {
+  List<Widget> _buildRoleQuickActions(
+    BuildContext context,
+    String role,
+    AppLocalizations l10n,
+  ) {
     if (role == 'DOCTOR') {
       return [
         _buildActionTile(
@@ -179,7 +196,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _buildActionTile(
           context: context,
           icon: Icons.folder_shared_outlined,
-          title: 'Patient Health Records',
+          title: l10n.healthRecords,
           subtitle: 'Lookup patient clinical history',
           route: '/records',
           color: const Color(0xFF006D77),
@@ -221,7 +238,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _buildActionTile(
         context: context,
         icon: Icons.folder_shared_outlined,
-        title: 'Health Records',
+        title: l10n.healthRecords,
         subtitle: 'View digital records, prescriptions & lab files',
         route: '/records',
         color: const Color(0xFF006A6A),
@@ -230,7 +247,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _buildActionTile(
         context: context,
         icon: Icons.calendar_month_outlined,
-        title: 'My Appointments',
+        title: l10n.myAppointments,
         subtitle: 'Check scheduled and upcoming visits',
         route: '/appointments',
         color: const Color(0xFF006A6A),
@@ -239,7 +256,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _buildActionTile(
         context: context,
         icon: Icons.add_task_outlined,
-        title: 'Book Appointment',
+        title: l10n.bookAppointment,
         subtitle: 'Schedule a visit at your nearest clinic',
         route: '/book-appointment',
         color: const Color(0xFF006A6A),
@@ -329,6 +346,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     String name,
     String role,
     String badge,
+    AppLocalizations l10n,
   ) {
     return Drawer(
       child: Column(
@@ -353,14 +371,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           ListTile(
             leading: const Icon(Icons.dashboard_outlined),
-            title: const Text('Dashboard'),
+            title: Text(l10n.dashboard),
             onTap: () {
               Navigator.pop(context);
             },
           ),
           ListTile(
             leading: const Icon(Icons.person_outline),
-            title: const Text('Profile'),
+            title: Text(l10n.profile),
             onTap: () {
               Navigator.pop(context);
               context.push('/profile');
@@ -369,7 +387,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text('Logout', style: TextStyle(color: Colors.red)),
+            title: Text(l10n.logout, style: const TextStyle(color: Colors.red)),
             onTap: () async {
               Navigator.pop(context);
               await ref.read(authNotifierProvider.notifier).signOut();

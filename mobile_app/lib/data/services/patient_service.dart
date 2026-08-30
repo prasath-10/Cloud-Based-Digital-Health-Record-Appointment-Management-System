@@ -61,7 +61,7 @@ class PatientService {
           'dob': dob,
           'gender': gender,
           'language_pref': languagePref,
-          if (phone != null) 'phone': phone,
+          'phone': ?phone,
         },
         options: Options(
           headers: {
@@ -76,6 +76,42 @@ class PatientService {
       throw Exception(response.data['message'] ?? 'Failed to register patient');
     } on DioException catch (e) {
       final errorMsg = e.response?.data?['message'] ?? e.message ?? 'Registration failed';
+      throw Exception(errorMsg);
+    }
+  }
+
+  /// Calls PUT /api/patients/:id to update editable profile fields.
+  /// Only non-null arguments are sent — the backend does partial updates.
+  Future<Map<String, dynamic>> updatePatient({
+    required String idToken,
+    required String patientId,
+    String? name,
+    String? dob,       // Format: YYYY-MM-DD
+    String? gender,    // 'Male' | 'Female' | 'Other'
+    String? languagePref,
+  }) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (dob != null) body['dob'] = dob;
+    if (gender != null) body['gender'] = gender;
+    if (languagePref != null) body['language_pref'] = languagePref;
+
+    try {
+      final response = await _dio.put(
+        '/patients/$patientId',
+        data: body,
+        options: Options(
+          headers: {'Authorization': 'Bearer $idToken'},
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        return response.data['data'] as Map<String, dynamic>;
+      }
+      throw Exception(response.data['message'] ?? 'Failed to update profile');
+    } on DioException catch (e) {
+      final errorMsg =
+          e.response?.data?['message'] ?? e.message ?? 'Update failed';
       throw Exception(errorMsg);
     }
   }

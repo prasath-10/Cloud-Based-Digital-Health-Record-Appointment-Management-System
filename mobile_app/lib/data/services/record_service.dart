@@ -86,7 +86,7 @@ class RecordService {
         if (doctorId != null && doctorId.isNotEmpty) 'doctor_id': doctorId,
         if (appointmentId != null && appointmentId.isNotEmpty) 'appointment_id': appointmentId,
         if (visitDate != null && visitDate.isNotEmpty) 'visit_date': visitDate,
-        if (notes != null) 'notes': notes,
+        'notes': ?notes,
         if (prescriptions != null && prescriptions.isNotEmpty) 'prescriptions': prescriptions,
       };
 
