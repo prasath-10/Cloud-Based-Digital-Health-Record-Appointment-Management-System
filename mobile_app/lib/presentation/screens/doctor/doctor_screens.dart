@@ -299,10 +299,28 @@ class DoctorTodayAppointmentsScreen extends ConsumerWidget {
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final appt = appointments[index];
+                      final patient =
+                          appt['patient'] as Map<String, dynamic>? ?? {};
+                      final clinic =
+                          appt['clinic'] as Map<String, dynamic>? ?? {};
                       return _DoctorAppointmentCard(
                         appointment: appt,
                         onConsult: () {
-                          context.push('/doctor/add-record', extra: appt);
+                          // ── Change A: pass a clean typed map as go_router extra ──
+                          // We extract only the fields the form needs so it never has
+                          // to do multi-level null-safe access into the raw API map.
+                          context.push('/doctor/add-record', extra: {
+                            'patient_id': appt['patient_id']?.toString() ??
+                                patient['id']?.toString() ??
+                                '',
+                            'patient_name': patient['name']?.toString() ??
+                                'Unnamed Patient',
+                            'health_id': patient['health_id']?.toString() ??
+                                'MWH-N/A',
+                            'appointment_id': appt['id']?.toString() ?? '',
+                            'clinic_name':
+                                clinic['name']?.toString() ?? 'Clinic',
+                          });
                         },
                       );
                     },
@@ -588,10 +606,469 @@ class _DoctorAppointmentCard extends StatelessWidget {
 }
 
 // ============================================================================
+// 3. PATIENT SEARCH SECTION (Standalone path — no appointment context)
+// ============================================================================
+//
+// This widget replaces the raw "Patient UUID *" TextFormField.
+//
+// UX flow:
+//   1. Doctor types a name fragment ("Ahmad") or a Health ID prefix ("MWH-AB").
+//   2. On tap of the search icon (or keyboard submit), calls
+//      GET /api/patients/search?q=<query> via patientServiceProvider.
+//   3. Up to 10 results are shown in a dismissable list.
+//   4. Tapping a result fires onPatientSelected(patient) which stores the
+//      patient map in _DoctorAddRecordScreenState._selectedPatient.
+//   5. A green confirmation chip replaces the list. The chip has an X button
+//      to clear and search again.
+//
+// The parent (_DoctorAddRecordScreenState) is responsible for:
+//   - Storing the selected patient in _selectedPatient.
+//   - Reading _selectedPatient['id'] in _submitRecord().
+// ============================================================================
+
+class _PatientSearchSection extends ConsumerStatefulWidget {
+  final void Function(Map<String, dynamic> patient) onPatientSelected;
+  final Map<String, dynamic>? selectedPatient;
+
+  const _PatientSearchSection({
+    required this.onPatientSelected,
+    required this.selectedPatient,
+  });
+
+  @override
+  ConsumerState<_PatientSearchSection> createState() =>
+      _PatientSearchSectionState();
+}
+
+class _PatientSearchSectionState extends ConsumerState<_PatientSearchSection> {
+  final _searchController = TextEditingController();
+  List<Map<String, dynamic>> _results = [];
+  bool _isSearching = false;
+  String? _searchError;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _doSearch() async {
+    final query = _searchController.text.trim();
+    if (query.length < 2) {
+      setState(() {
+        _searchError = 'Enter at least 2 characters to search.';
+        _results = [];
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _searchError = null;
+      _results = [];
+    });
+
+    try {
+      final token = ref.read(authTokenProvider);
+      if (token == null) {
+        setState(() {
+          _searchError = 'Not authenticated.';
+          _isSearching = false;
+        });
+        return;
+      }
+      final service = ref.read(patientServiceProvider);
+      final results = await service.searchPatients(
+        idToken: token,
+        query: query,
+      );
+      setState(() {
+        _results = results;
+        _isSearching = false;
+        if (results.isEmpty) {
+          _searchError =
+              'No patients found matching "$query". Try a different name or Health ID.';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _searchError = e.toString().replaceAll('Exception: ', '');
+        _isSearching = false;
+      });
+    }
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _results = [];
+      _searchError = null;
+      _searchController.clear();
+    });
+    // Notify parent to clear selected patient — pass an empty sentinel
+    // by calling onPatientSelected with a map that has a null id,
+    // which _submitRecord treats as "no patient".
+    // We do this via the parent setState wrapper in onPatientSelected.
+    // Use a dedicated null-signal approach: the parent checks _selectedPatient == null.
+    // But we can't set _selectedPatient to null from here directly — we rely on
+    // the parent rebuilding this widget with selectedPatient: null.
+    // So we expose a callback via onPatientSelected with a sentinel {} map
+    // and the parent handles clearing _selectedPatient by detecting empty id.
+    widget.onPatientSelected({'id': '', '_clear': true});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // If a patient is already selected, show confirmation chip + clear button
+    if (widget.selectedPatient != null &&
+        (widget.selectedPatient!['_clear'] != true) &&
+        (widget.selectedPatient!['id']?.toString().isNotEmpty ?? false)) {
+      final p = widget.selectedPatient!;
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.shade300),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 18),
+                const SizedBox(width: 8),
+                const Text(
+                  'Patient Identification',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _clearSelection,
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Change'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey.shade700,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor:
+                      const Color(0xFF006D77).withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.person,
+                    color: Color(0xFF006D77),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        p['name']?.toString() ?? 'Unknown',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2B2D42),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blueGrey.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border:
+                                  Border.all(color: Colors.blueGrey.shade200),
+                            ),
+                            child: Text(
+                              p['health_id']?.toString() ?? 'MWH-N/A',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blueGrey.shade800,
+                              ),
+                            ),
+                          ),
+                          if (p['gender'] != null) ...[ 
+                            const SizedBox(width: 6),
+                            Text(
+                              p['gender'].toString(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.check_circle,
+                  color: Color(0xFF2E7D32),
+                  size: 20,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Default: show search field + results list
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Patient Identification',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Search by patient name or Health ID (e.g. MWH-AB1234)',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 10),
+          // ── Search Input ─────────────────────────────────────────
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Ahmad Razif or MWH-ABC123',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    isDense: true,
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _doSearch(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 44,
+                child: ElevatedButton(
+                  onPressed: _isSearching ? null : _doSearch,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF006D77),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: _isSearching
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Search',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ),
+            ],
+          ),
+
+          // ── Error / Empty State ──────────────────────────────────
+          if (_searchError != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      size: 16, color: Colors.orange.shade800),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _searchError!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // ── Search Results List ──────────────────────────────────
+          if (_results.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade200),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Text(
+                      '${_results.length} result${_results.length == 1 ? '' : 's'} — tap to select',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ...List.generate(_results.length, (index) {
+                    final p = _results[index];
+                    final isLast = index == _results.length - 1;
+                    return Column(
+                      children: [
+                        InkWell(
+                          onTap: () => widget.onPatientSelected(p),
+                          borderRadius: isLast
+                              ? const BorderRadius.only(
+                                  bottomLeft: Radius.circular(8),
+                                  bottomRight: Radius.circular(8),
+                                )
+                              : BorderRadius.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: const Color(0xFF006D77)
+                                      .withValues(alpha: 0.1),
+                                  child: const Icon(
+                                    Icons.person,
+                                    color: Color(0xFF006D77),
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        p['name']?.toString() ?? 'Unknown',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding:
+                                                const EdgeInsets.symmetric(
+                                                    horizontal: 5, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blueGrey.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(3),
+                                              border: Border.all(
+                                                  color: Colors
+                                                      .blueGrey.shade200),
+                                            ),
+                                            child: Text(
+                                              p['health_id']?.toString() ??
+                                                  'MWH-N/A',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color:
+                                                    Colors.blueGrey.shade800,
+                                              ),
+                                            ),
+                                          ),
+                                          if (p['phone'] != null) ...[
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              p['phone'].toString(),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right,
+                                  size: 18,
+                                  color: Colors.grey.shade400,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (!isLast) const Divider(height: 1),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+// ============================================================================
 // 2. DOCTOR "ADD VISIT NOTES" SCREEN (Day 20 - Task 2)
 // ============================================================================
 
 class DoctorAddRecordScreen extends ConsumerStatefulWidget {
+  /// Non-null when launched from the appointment queue (appointment path).
+  /// Contains clean typed keys: patient_id, patient_name, health_id,
+  /// appointment_id, clinic_name.
+  /// Null when launched from the standalone "Add Visit Record" quick action.
   final Map<String, dynamic>? initialAppointmentData;
 
   const DoctorAddRecordScreen({
@@ -600,7 +1077,8 @@ class DoctorAddRecordScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<DoctorAddRecordScreen> createState() => _DoctorAddRecordScreenState();
+  ConsumerState<DoctorAddRecordScreen> createState() =>
+      _DoctorAddRecordScreenState();
 }
 
 class _PrescriptionEntry {
@@ -626,7 +1104,10 @@ class _PrescriptionEntry {
 class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  late final TextEditingController _patientIdController;
+  // Standalone path: holds the patient selected via search widget.
+  // Appointment path: patient_id comes directly from initialAppointmentData.
+  Map<String, dynamic>? _selectedPatient;
+
   final _diagnosisController = TextEditingController();
   final _notesController = TextEditingController();
 
@@ -636,19 +1117,12 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
   @override
   void initState() {
     super.initState();
-    final patient = widget.initialAppointmentData?['patient'] as Map<String, dynamic>?;
-    final patientId = widget.initialAppointmentData?['patient_id']?.toString() ??
-        patient?['id']?.toString() ??
-        '';
-    _patientIdController = TextEditingController(text: patientId);
-
     // Start with 1 initial prescription entry for convenience
     _prescriptions.add(_PrescriptionEntry());
   }
 
   @override
   void dispose() {
-    _patientIdController.dispose();
     _diagnosisController.dispose();
     _notesController.dispose();
     for (final p in _prescriptions) {
@@ -677,18 +1151,42 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
       return;
     }
 
-    final token = ref.read(authTokenProvider);
-    if (token == null) {
+    // ── Change C: resolve patient_id from the correct source per entry path ──
+    //
+    // Appointment path: patient_id was pre-filled by the appointment queue
+    //   and is stored in initialAppointmentData under the 'patient_id' key
+    //   (the clean map we built in Change A).
+    //
+    // Standalone path: the doctor searched for and selected a patient via
+    //   _PatientSearchSection; the result is stored in _selectedPatient.
+    //
+    // Both paths eventually pass the same patientId to createMedicalRecord.
+    final String? patientId;
+    if (widget.initialAppointmentData != null) {
+      patientId = widget.initialAppointmentData!['patient_id']?.toString();
+    } else {
+      patientId = _selectedPatient?['id']?.toString();
+    }
+
+    if (patientId == null || patientId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not authenticated. Please log in.')),
+        SnackBar(
+          content: Text(
+            widget.initialAppointmentData != null
+                ? 'Patient ID is missing from the appointment data.'
+                : 'Please search for and select a patient first.',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
       );
       return;
     }
 
-    final patientId = _patientIdController.text.trim();
-    if (patientId.isEmpty) {
+    final token = ref.read(authTokenProvider);
+    if (token == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Patient ID is required.')),
+        const SnackBar(content: Text('Not authenticated. Please log in.')),
       );
       return;
     }
@@ -722,7 +1220,8 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
       }
     }
 
-    final appointmentId = widget.initialAppointmentData?['id']?.toString();
+    final appointmentId =
+        widget.initialAppointmentData?['appointment_id']?.toString();
     final authState = ref.read(authNotifierProvider);
     final doctorId = widget.initialAppointmentData?['doctor_id']?.toString() ??
         widget.initialAppointmentData?['doctor']?['id']?.toString() ??
@@ -841,11 +1340,13 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
   @override
   Widget build(BuildContext context) {
     final appointment = widget.initialAppointmentData;
-    final patient = appointment?['patient'] as Map<String, dynamic>?;
-    final patientName = patient?['name']?.toString() ?? 'Patient';
-    final healthId = patient?['health_id']?.toString() ?? 'MWH-N/A';
-    final clinic = appointment?['clinic'] as Map<String, dynamic>?;
-    final clinicName = clinic?['name']?.toString() ?? 'Clinic';
+    // Read from the clean typed keys set by Change A in onConsult.
+    // Appointment path: appointment != null, keys are patient_name / health_id / clinic_name.
+    // Standalone path: appointment == null, the _PatientSearchSection widget handles display.
+    final patientName = appointment?['patient_name']?.toString() ?? 'Patient';
+    final healthId = appointment?['health_id']?.toString() ?? 'MWH-N/A';
+    final clinicName = appointment?['clinic_name']?.toString() ?? 'Clinic';
+
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -919,41 +1420,24 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
                 ),
                 const SizedBox(height: 20),
               ] else ...[
-                // Manual Patient ID entry if opened without appointment
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Patient Identification',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                      const SizedBox(height: 10),
-                      TextFormField(
-                        controller: _patientIdController,
-                        decoration: InputDecoration(
-                          labelText: 'Patient UUID *',
-                          hintText: 'e.g. 550e8400-e29b-41d4-a716-446655440000',
-                          prefixIcon: const Icon(Icons.badge_outlined),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter patient UUID';
-                          }
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
+                // ── Change B: Standalone path — patient search widget ─────
+                // Replaces the raw "Patient UUID *" TextFormField.
+                // The widget handles its own search state and calls back here
+                // when the doctor selects a patient from the results list.
+                _PatientSearchSection(
+                  onPatientSelected: (patient) {
+                    setState(() {
+                      // _clearSelection sends {'id': '', '_clear': true} as a sentinel
+                      // to signal that the doctor wants to clear their selection.
+                      // Any other map is a real patient.
+                      if (patient['_clear'] == true) {
+                        _selectedPatient = null;
+                      } else {
+                        _selectedPatient = patient;
+                      }
+                    });
+                  },
+                  selectedPatient: _selectedPatient,
                 ),
                 const SizedBox(height: 20),
               ],

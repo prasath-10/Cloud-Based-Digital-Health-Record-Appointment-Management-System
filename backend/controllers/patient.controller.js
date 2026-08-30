@@ -348,9 +348,57 @@ async function updatePatient(req, res, next) {
   }
 }
 
+/**
+ * @route   GET /api/patients/search?q=<query>
+ * @desc    Search patients by name or Health ID (partial, case-insensitive)
+ * @access  Private — DOCTOR and ADMIN only
+ */
+async function searchPatients(req, res, next) {
+  try {
+    const q = (req.query.q || '').toString().trim();
+
+    if (q.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'Query parameter "q" must be at least 2 characters long.',
+      });
+    }
+
+    const patients = await prisma.patient.findMany({
+      where: {
+        OR: [
+          { name:      { contains: q, mode: 'insensitive' } },
+          { health_id: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id:        true,
+        name:      true,
+        health_id: true,
+        phone:     true,
+        gender:    true,
+        dob:       true,
+      },
+      orderBy: { name: 'asc' },
+      take: 10,
+    });
+
+    return res.json({
+      success: true,
+      count: patients.length,
+      data: patients,
+    });
+  } catch (error) {
+    console.error('❌ Error searching patients:', error.message);
+    next(error);
+  }
+}
+
 module.exports = {
   createPatient,
   getMyProfile,
   getPatientById,
   updatePatient,
+  searchPatients,
 };

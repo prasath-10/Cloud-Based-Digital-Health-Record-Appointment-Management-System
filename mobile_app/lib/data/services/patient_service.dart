@@ -115,4 +115,32 @@ class PatientService {
       throw Exception(errorMsg);
     }
   }
+
+  /// Search patients by partial name or Health ID via GET /api/patients/search?q=`query`
+  /// Returns up to 10 matches. Requires DOCTOR or ADMIN role token.
+  /// Each result: { id, name, health_id, phone, gender, dob }
+  Future<List<Map<String, dynamic>>> searchPatients({
+    required String idToken,
+    required String query,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/patients/search',
+        queryParameters: {'q': query},
+        options: Options(
+          headers: {'Authorization': 'Bearer $idToken'},
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final List<dynamic> dataList = response.data['data'] ?? [];
+        return dataList.map((item) => item as Map<String, dynamic>).toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      final errorMsg =
+          e.response?.data?['message'] ?? e.message ?? 'Patient search failed.';
+      throw Exception(errorMsg);
+    }
+  }
 }
