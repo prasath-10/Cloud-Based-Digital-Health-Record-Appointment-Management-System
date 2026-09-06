@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/errors/api_exception.dart';
 
 class AdminService {
   final Dio _dio;
@@ -39,8 +40,7 @@ class AdminService {
       }
       return [];
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to fetch doctors.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -68,10 +68,9 @@ class AdminService {
           response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception(response.data['message'] ?? 'Failed to register doctor.');
+      throw ApiException(response.data['message']?.toString() ?? 'Failed to register doctor.');
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to register doctor.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -95,8 +94,7 @@ class AdminService {
       }
       return [];
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to fetch clinics.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -129,10 +127,9 @@ class AdminService {
       if (response.statusCode == 200 && response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception(response.data['message'] ?? 'Failed to update clinic.');
+      throw ApiException(response.data['message']?.toString() ?? 'Failed to update clinic.');
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to update clinic.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 }

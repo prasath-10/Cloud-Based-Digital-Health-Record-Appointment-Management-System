@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/errors/api_exception.dart';
 
 class PatientService {
   final Dio _dio;
@@ -39,8 +40,7 @@ class PatientService {
         // Patient profile not yet created in the database
         return null;
       }
-      final errorMsg = e.response?.data?['message'] ?? e.message ?? 'Failed to fetch profile';
-      throw Exception(errorMsg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -73,10 +73,9 @@ class PatientService {
       if (response.statusCode == 201 && response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception(response.data['message'] ?? 'Failed to register patient');
+      throw ApiException(response.data['message']?.toString() ?? 'Failed to register patient');
     } on DioException catch (e) {
-      final errorMsg = e.response?.data?['message'] ?? e.message ?? 'Registration failed';
-      throw Exception(errorMsg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -108,11 +107,9 @@ class PatientService {
       if (response.statusCode == 200 && response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception(response.data['message'] ?? 'Failed to update profile');
+      throw ApiException(response.data['message']?.toString() ?? 'Failed to update profile');
     } on DioException catch (e) {
-      final errorMsg =
-          e.response?.data?['message'] ?? e.message ?? 'Update failed';
-      throw Exception(errorMsg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -138,9 +135,7 @@ class PatientService {
       }
       return [];
     } on DioException catch (e) {
-      final errorMsg =
-          e.response?.data?['message'] ?? e.message ?? 'Patient search failed.';
-      throw Exception(errorMsg);
+      throw ApiException.fromDioException(e);
     }
   }
 }

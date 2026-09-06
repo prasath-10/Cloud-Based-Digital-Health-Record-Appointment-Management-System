@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/errors/api_exception.dart';
 
 /// Thrown when POST /api/appointments returns HTTP 409 Conflict,
 /// meaning another patient has already booked that doctor + slot_time.
@@ -33,8 +34,6 @@ class AppointmentService {
   // ---------------------------------------------------------------------------
 
   /// Returns every clinic the backend knows about.
-  /// Each map will contain at least: id, name, location (and possibly address,
-  /// phone, etc. depending on your seed data).
   Future<List<Map<String, dynamic>>> getClinics({
     required String idToken,
   }) async {
@@ -50,8 +49,7 @@ class AppointmentService {
       }
       return [];
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to load clinics.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -60,7 +58,6 @@ class AppointmentService {
   // ---------------------------------------------------------------------------
 
   /// Returns all doctors belonging to [clinicId].
-  /// Each map will contain at least: id, name, specialization.
   Future<List<Map<String, dynamic>>> getDoctors({
     required String idToken,
     required String clinicId,
@@ -78,8 +75,7 @@ class AppointmentService {
       }
       return [];
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to load doctors.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -88,11 +84,7 @@ class AppointmentService {
   // ---------------------------------------------------------------------------
 
   /// Books an appointment and returns the created appointment object.
-  ///
-  /// [slotTime] must be an ISO-8601 string, e.g. "2026-09-05T10:30:00.000Z".
-  ///
-  /// Throws [SlotTakenException] on HTTP 409 Conflict so callers can display
-  /// a specific, actionable message instead of a generic error.
+  /// Throws [SlotTakenException] on HTTP 409 Conflict.
   Future<Map<String, dynamic>> bookAppointment({
     required String idToken,
     required String doctorId,
@@ -114,14 +106,12 @@ class AppointmentService {
           response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception(response.data['message'] ?? 'Booking failed.');
+      throw ApiException(response.data['message']?.toString() ?? 'Booking failed.');
     } on DioException catch (e) {
-      // 409 Conflict → the doctor+slot combination is already booked
       if (e.response?.statusCode == 409) {
         throw const SlotTakenException();
       }
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Booking request failed.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -156,8 +146,7 @@ class AppointmentService {
       }
       return [];
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to load appointments.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -183,8 +172,7 @@ class AppointmentService {
       }
       return [];
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Failed to load appointments.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -193,8 +181,6 @@ class AppointmentService {
   // ---------------------------------------------------------------------------
 
   /// Reschedules an appointment with a new [slotTime] (ISO-8601 string).
-  ///
-  /// Throws [SlotTakenException] on HTTP 409 Conflict if the doctor is booked for that slot.
   Future<Map<String, dynamic>> rescheduleAppointment({
     required String idToken,
     required String appointmentId,
@@ -212,13 +198,12 @@ class AppointmentService {
       if (response.statusCode == 200 && response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception(response.data['message'] ?? 'Reschedule failed.');
+      throw ApiException(response.data['message']?.toString() ?? 'Reschedule failed.');
     } on DioException catch (e) {
       if (e.response?.statusCode == 409) {
         throw const SlotTakenException();
       }
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Reschedule request failed.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -240,10 +225,9 @@ class AppointmentService {
       if (response.statusCode == 200 && response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception(response.data['message'] ?? 'Cancellation failed.');
+      throw ApiException(response.data['message']?.toString() ?? 'Cancellation failed.');
     } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Cancel request failed.';
-      throw Exception(msg);
+      throw ApiException.fromDioException(e);
     }
   }
 }

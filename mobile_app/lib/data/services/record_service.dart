@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/errors/api_exception.dart';
 
 class RecordService {
   final Dio _dio;
@@ -38,8 +39,7 @@ class RecordService {
       }
       return [];
     } on DioException catch (e) {
-      final errorMsg = e.response?.data?['message'] ?? e.message ?? 'Failed to load medical records.';
-      throw Exception(errorMsg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -61,10 +61,9 @@ class RecordService {
       if (response.statusCode == 200 && response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception('Record not found.');
+      throw ApiException('Record not found.', statusCode: 404);
     } on DioException catch (e) {
-      final errorMsg = e.response?.data?['message'] ?? e.message ?? 'Failed to load record details.';
-      throw Exception(errorMsg);
+      throw ApiException.fromDioException(e);
     }
   }
 
@@ -104,11 +103,9 @@ class RecordService {
           response.data['success'] == true) {
         return response.data['data'] as Map<String, dynamic>;
       }
-      throw Exception(response.data['message'] ?? 'Failed to create medical record.');
+      throw ApiException(response.data['message']?.toString() ?? 'Failed to create medical record.');
     } on DioException catch (e) {
-      final errorMsg = e.response?.data?['message'] ?? e.message ?? 'Failed to create medical record.';
-      throw Exception(errorMsg);
+      throw ApiException.fromDioException(e);
     }
   }
 }
-

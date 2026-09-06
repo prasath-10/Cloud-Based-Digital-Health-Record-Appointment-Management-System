@@ -163,7 +163,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       state = state.copyWith(
         status: AuthStatus.error,
-        errorMessage: 'Backend connection error: ${e.toString()}',
+        errorMessage: e.toString().replaceAll('Exception: ', ''),
       );
     }
   }
