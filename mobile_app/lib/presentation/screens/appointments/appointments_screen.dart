@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../data/services/appointment_service.dart';
 import '../../../providers/app_providers.dart';
+import '../../widgets/offline_banner.dart';
 
 class AppointmentsScreen extends ConsumerStatefulWidget {
   const AppointmentsScreen({super.key});
@@ -93,7 +94,8 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
               ),
             ),
           ),
-          data: (appointments) {
+          data: (result) {
+            final appointments = result.data;
             final now = DateTime.now();
 
             // Categorize into Upcoming vs Past
@@ -115,7 +117,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
               }
             }
 
-            return TabBarView(
+            final tabView = TabBarView(
               children: [
                 _AppointmentListView(
                   appointments: upcoming,
@@ -131,6 +133,17 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                 ),
               ],
             );
+
+            if (result.isOffline) {
+              return Column(
+                children: [
+                  OfflineBanner(lastUpdated: result.lastUpdated),
+                  Expanded(child: tabView),
+                ],
+              );
+            }
+
+            return tabView;
           },
         ),
         floatingActionButton: FloatingActionButton.extended(

@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import '../core/models/cached_result.dart';
 import '../data/services/appointment_service.dart';
+import '../data/services/local_cache_service.dart';
 import 'auth_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,13 +120,51 @@ final doctorsForClinicProvider =
 });
 
 /// Fetches all appointments for the logged-in patient from GET /api/appointments/me.
+/// Falls back to Hive offline cache when network is unavailable.
 final myAppointmentsProvider =
-    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final token = ref.watch(authTokenProvider);
-  if (token == null) throw Exception('Not authenticated.');
+    FutureProvider.autoDispose<CachedResult<List<Map<String, dynamic>>>>((ref) async {
+  final authState = ref.watch(authNotifierProvider);
+  final token = authState.idToken;
+  final patientId = authState.patientProfile?['id']?.toString() ??
+      authState.patientProfile?['health_id']?.toString();
+
+  if (patientId == null || patientId.isEmpty) {
+    return const CachedResult(data: [], isOffline: false);
+  }
+
+  if (token == null) {
+    final cached = LocalCacheService.getAppointments(patientId);
+    if (cached != null) {
+      return CachedResult(
+        data: cached['data'] as List<Map<String, dynamic>>,
+        isOffline: true,
+        lastUpdated: cached['timestamp'] as DateTime?,
+      );
+    }
+    throw Exception('Not authenticated.');
+  }
 
   final service = ref.watch(appointmentServiceProvider);
-  return service.getMyAppointments(idToken: token);
+
+  try {
+    final liveAppointments = await service.getMyAppointments(idToken: token);
+    await LocalCacheService.saveAppointments(patientId, liveAppointments);
+    return CachedResult(
+      data: liveAppointments,
+      isOffline: false,
+      lastUpdated: DateTime.now(),
+    );
+  } catch (e) {
+    final cached = LocalCacheService.getAppointments(patientId);
+    if (cached != null) {
+      return CachedResult(
+        data: cached['data'] as List<Map<String, dynamic>>,
+        isOffline: true,
+        lastUpdated: cached['timestamp'] as DateTime?,
+      );
+    }
+    rethrow;
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

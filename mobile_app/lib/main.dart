@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'core/theme/app_theme.dart';
+import 'data/services/local_cache_service.dart';
 import 'firebase_options.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'providers/locale_provider.dart';
@@ -13,6 +14,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialize Hive offline cache
+  await LocalCacheService.init();
 
   runApp(
     // ProviderScope stores the state of all Riverpod providers
