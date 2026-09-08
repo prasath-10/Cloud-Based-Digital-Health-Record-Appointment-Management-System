@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/services/auth_service.dart';
 import '../data/services/patient_service.dart';
+import '../data/services/secure_storage_service.dart';
 
 enum AuthStatus {
   initial,
@@ -58,9 +59,64 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
   final PatientService _patientService;
+  final SecureStorageService _secureStorage;
 
-  AuthNotifier(this._authService, this._patientService)
-      : super(const AuthState());
+  AuthNotifier(this._authService, this._patientService, this._secureStorage)
+      : super(const AuthState()) {
+    restoreSession();
+  }
+
+  /// Attempts to restore a previous session from Secure Storage and Firebase on app boot
+  Future<void> restoreSession() async {
+    try {
+      // 1. Check if Firebase currentUser exists or token is stored securely
+      final currentUser = _authService.currentUser;
+      String? token;
+      String? phone = currentUser?.phoneNumber;
+
+      if (currentUser != null) {
+        // Refresh token from Firebase Auth
+        token = await _authService.getIdToken(forceRefresh: false);
+      }
+
+      // 2. Check encrypted secure storage if token not acquired from Firebase user
+      token ??= await _secureStorage.getToken();
+      phone ??= await _secureStorage.getPhoneNumber();
+
+      if (token == null || token.isEmpty) {
+        return;
+      }
+
+      // 3. Keep secure storage synchronized
+      await _secureStorage.saveToken(token);
+      if (phone != null && phone.isNotEmpty) {
+        await _secureStorage.savePhoneNumber(phone);
+      }
+
+      state = state.copyWith(
+        status: AuthStatus.verifying,
+        idToken: token,
+        phoneNumber: phone,
+      );
+
+      // 4. Validate session by fetching user profile
+      final profile = await _patientService.getMyProfile(token);
+      if (profile != null) {
+        state = state.copyWith(
+          status: AuthStatus.authenticated,
+          patientProfile: profile,
+        );
+      } else {
+        state = state.copyWith(
+          status: AuthStatus.needsRegistration,
+        );
+      }
+    } catch (_) {
+      // If token expired or validation fails, clean up and stay in initial state
+      await _secureStorage.clearAll();
+      state = const AuthState();
+    }
+  }
 
   /// Step 3: Trigger OTP dispatch via Firebase
   Future<void> sendOtp(String rawPhone) async {
@@ -131,7 +187,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  /// Handles token retrieval and backend profile check
+  /// Handles token retrieval, secure storage persistence, and backend profile check
   Future<void> _onAuthSuccess() async {
     try {
       final token = await _authService.getIdToken(forceRefresh: true);
@@ -141,6 +197,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
           errorMessage: 'Failed to retrieve Firebase ID token.',
         );
         return;
+      }
+
+      // Persist token and phone in hardware-backed encrypted storage
+      await _secureStorage.saveToken(token);
+      if (state.phoneNumber != null) {
+        await _secureStorage.savePhoneNumber(state.phoneNumber!);
       }
 
       state = state.copyWith(idToken: token);
@@ -242,8 +304,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(patientProfile: merged);
   }
 
-  /// Sign out
+  /// Sign out and purge secure storage credentials
   Future<void> signOut() async {
+    await _secureStorage.clearAll();
     await _authService.signOut();
     state = const AuthState();
   }
@@ -252,15 +315,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
 // Global Providers
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 final patientServiceProvider = Provider<PatientService>((ref) => PatientService());
+final secureStorageServiceProvider = Provider<SecureStorageService>((ref) => SecureStorageService());
 
 final authNotifierProvider =
     StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final authService = ref.watch(authServiceProvider);
   final patientService = ref.watch(patientServiceProvider);
-  return AuthNotifier(authService, patientService);
+  final secureStorage = ref.watch(secureStorageServiceProvider);
+  return AuthNotifier(authService, patientService, secureStorage);
 });
 
 // Helper provider for convenient token access in other providers
 final authTokenProvider = Provider<String?>((ref) {
   return ref.watch(authNotifierProvider).idToken;
 });
+

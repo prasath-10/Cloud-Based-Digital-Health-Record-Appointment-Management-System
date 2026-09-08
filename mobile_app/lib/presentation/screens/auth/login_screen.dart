@@ -35,7 +35,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     // Listen to state changes to navigate or show errors
     ref.listen<AuthState>(authNotifierProvider, (previous, next) {
-      if (next.status == AuthStatus.otpSent) {
+      if (next.status == AuthStatus.authenticated) {
+        context.go('/');
+      } else if (next.status == AuthStatus.needsRegistration) {
+        context.go('/register');
+      } else if (next.status == AuthStatus.otpSent) {
         context.push('/verify-otp');
       } else if (next.status == AuthStatus.error && next.errorMessage != null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -47,6 +51,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
       }
     });
+
+    // If session is currently verifying from secure storage on startup
+    if (authState.status == AuthStatus.verifying && authState.phoneNumber == null) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: Color(0xFF006A6A)),
+              SizedBox(height: 16),
+              Text(
+                'Checking secure session...',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: SafeArea(
