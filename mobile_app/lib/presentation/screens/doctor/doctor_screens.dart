@@ -1358,6 +1358,7 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1479,9 +1480,16 @@ class _DoctorAddRecordScreenState extends ConsumerState<DoctorAddRecordScreen> {
                         filled: true,
                         fillColor: Colors.grey.shade50,
                       ),
-                      validator: (value) {
-                        if (value == null || value.trim().length < 2) {
-                          return 'Please enter a valid diagnosis (at least 2 characters)';
+                    validator: (value) {
+                        final v = value?.trim() ?? '';
+                        if (v.isEmpty) {
+                          return 'Diagnosis is required — cannot be blank';
+                        }
+                        if (v.length < 3) {
+                          return 'Enter a meaningful diagnosis (at least 3 characters)';
+                        }
+                        if (v.length > 500) {
+                          return 'Diagnosis is too long (max 500 characters)';
                         }
                         return null;
                       },
@@ -1731,7 +1739,7 @@ class _PrescriptionCard extends StatelessWidget {
             TextFormField(
               controller: entry.medicineController,
               decoration: InputDecoration(
-                labelText: 'Medicine Name',
+                labelText: 'Medicine Name *',
                 hintText: 'e.g. Amoxicillin / Paracetamol',
                 prefixIcon: const Icon(Icons.medication, size: 18),
                 isDense: true,
@@ -1739,6 +1747,13 @@ class _PrescriptionCard extends StatelessWidget {
                 filled: true,
                 fillColor: Colors.grey.shade50,
               ),
+              validator: (val) {
+                final v = val?.trim() ?? '';
+                if (v.isEmpty) return 'Medicine name is required';
+                if (v.length < 2) return 'Enter a valid medicine name';
+                if (v.length > 100) return 'Name too long (max 100 chars)';
+                return null;
+              },
             ),
             const SizedBox(height: 10),
             Row(
@@ -1748,13 +1763,19 @@ class _PrescriptionCard extends StatelessWidget {
                   child: TextFormField(
                     controller: entry.dosageController,
                     decoration: InputDecoration(
-                      labelText: 'Dosage',
+                      labelText: 'Dosage *',
                       hintText: 'e.g. 500mg TDS',
                       isDense: true,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       filled: true,
                       fillColor: Colors.grey.shade50,
                     ),
+                    validator: (val) {
+                      final v = val?.trim() ?? '';
+                      if (v.isEmpty) return 'Dosage is required';
+                      if (v.length < 2) return 'Enter valid dosage (e.g. 500mg)';
+                      return null;
+                    },
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1763,13 +1784,19 @@ class _PrescriptionCard extends StatelessWidget {
                   child: TextFormField(
                     controller: entry.durationController,
                     decoration: InputDecoration(
-                      labelText: 'Duration',
+                      labelText: 'Duration *',
                       hintText: 'e.g. 5 days',
                       isDense: true,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       filled: true,
                       fillColor: Colors.grey.shade50,
                     ),
+                    validator: (val) {
+                      final v = val?.trim() ?? '';
+                      if (v.isEmpty) return 'Duration required';
+                      if (v.length < 2) return 'Enter valid duration';
+                      return null;
+                    },
                   ),
                 ),
               ],
@@ -1780,3 +1807,4 @@ class _PrescriptionCard extends StatelessWidget {
     );
   }
 }
+

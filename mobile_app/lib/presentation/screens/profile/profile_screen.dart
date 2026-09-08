@@ -499,6 +499,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         padding: const EdgeInsets.all(18.0),
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -544,8 +545,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                   validator: (val) {
-                    if (val == null || val.trim().length < 2) {
-                      return 'Please enter a valid full name';
+                    final trimmed = val?.trim() ?? '';
+                    if (trimmed.isEmpty) return 'Full Name is required';
+                    if (trimmed.length < 2) return 'Name must be at least 2 characters';
+                    if (trimmed.length > 80) return 'Name cannot exceed 80 characters';
+                    if (!RegExp(r"^[a-zA-Z\s\.\-']+$").hasMatch(trimmed)) {
+                      return 'Name can only contain letters, spaces, dots, and hyphens';
                     }
                     return null;
                   },
@@ -574,8 +579,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                   validator: (val) {
-                    if (val == null || val.trim().isEmpty) {
-                      return 'Please select date of birth';
+                    final dob = val?.trim() ?? '';
+                    if (dob.isEmpty) return 'Please select your Date of Birth';
+                    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dob)) {
+                      return 'Date must be in YYYY-MM-DD format';
+                    }
+                    final parsed = DateTime.tryParse(dob);
+                    if (parsed == null) return 'Invalid calendar date';
+                    if (parsed.isAfter(DateTime.now())) {
+                      return 'Date of birth cannot be in the future';
+                    }
+                    if (parsed.isBefore(DateTime(1900))) {
+                      return 'Please select a valid birth year';
                     }
                     return null;
                   },

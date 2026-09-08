@@ -80,6 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               constraints: const BoxConstraints(maxWidth: 440),
               child: Form(
                 key: _formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -195,11 +196,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               ),
                               validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Please enter your phone number';
+                                final digits = value?.trim() ?? '';
+                                if (digits.isEmpty) {
+                                  return 'Phone number is required';
                                 }
-                                if (value.trim().length < 10) {
-                                  return 'Please enter a valid 10-digit mobile number';
+                                if (digits.length != 10) {
+                                  return 'Enter a valid 10-digit mobile number';
+                                }
+                                if (!RegExp(r'^[6-9]\d{9}$').hasMatch(digits)) {
+                                  return 'Must start with 6, 7, 8 or 9 (valid Indian mobile)';
                                 }
                                 return null;
                               },

@@ -99,6 +99,7 @@ class _PatientRegistrationScreenState extends ConsumerState<PatientRegistrationS
               constraints: const BoxConstraints(maxWidth: 480),
               child: Form(
                 key: _formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -147,8 +148,18 @@ class _PatientRegistrationScreenState extends ConsumerState<PatientRegistrationS
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       validator: (value) {
-                        if (value == null || value.trim().length < 2) {
-                          return 'Please enter a valid name (at least 2 characters)';
+                        final trimmed = value?.trim() ?? '';
+                        if (trimmed.isEmpty) {
+                          return 'Full Name is required';
+                        }
+                        if (trimmed.length < 2) {
+                          return 'Name must be at least 2 characters';
+                        }
+                        if (trimmed.length > 80) {
+                          return 'Name cannot exceed 80 characters';
+                        }
+                        if (!RegExp(r"^[a-zA-Z\s\.\-']+$").hasMatch(trimmed)) {
+                          return 'Name can only contain letters, spaces, dots, and hyphens';
                         }
                         return null;
                       },
@@ -171,8 +182,23 @@ class _PatientRegistrationScreenState extends ConsumerState<PatientRegistrationS
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
+                        final dob = value?.trim() ?? '';
+                        if (dob.isEmpty) {
                           return 'Please select your Date of Birth';
+                        }
+                        if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dob)) {
+                          return 'Enter valid date format (YYYY-MM-DD)';
+                        }
+                        final parsed = DateTime.tryParse(dob);
+                        if (parsed == null) {
+                          return 'Invalid calendar date';
+                        }
+                        final now = DateTime.now();
+                        if (parsed.isAfter(now)) {
+                          return 'Date of birth cannot be in the future';
+                        }
+                        if (parsed.isBefore(DateTime(1900))) {
+                          return 'Please select a valid birth year';
                         }
                         return null;
                       },
@@ -190,6 +216,8 @@ class _PatientRegistrationScreenState extends ConsumerState<PatientRegistrationS
                       items: _genderOptions.map((g) {
                         return DropdownMenuItem(value: g, child: Text(g));
                       }).toList(),
+                      validator: (val) =>
+                          (val == null || val.isEmpty) ? 'Please select a gender' : null,
                       onChanged: (val) {
                         if (val != null) {
                           setState(() => _selectedGender = val);
@@ -209,12 +237,15 @@ class _PatientRegistrationScreenState extends ConsumerState<PatientRegistrationS
                       items: _languageOptions.map((l) {
                         return DropdownMenuItem(value: l, child: Text(l));
                       }).toList(),
+                      validator: (val) =>
+                          (val == null || val.isEmpty) ? 'Please select a preferred language' : null,
                       onChanged: (val) {
                         if (val != null) {
                           setState(() => _selectedLanguage = val);
                         }
                       },
                     ),
+
                     const SizedBox(height: 28),
 
                     // Error Message Banner (if any)
